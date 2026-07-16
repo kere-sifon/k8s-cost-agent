@@ -83,7 +83,8 @@ scripts/                 CLI: verify_rbac.py, register_cluster.py
 tests/                   Resolver + RBAC-gate tests
 data/                    Local SQLite file (gitignored)
 ```
----
+
+
 See also [`mcp_server/README.md`](./mcp_server/README.md). Query tools **refuse**
 clusters that are not RBAC-verified (`rbac_status != verified`).
 ---
