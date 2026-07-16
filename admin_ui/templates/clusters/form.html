@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'new' %}Add cluster{% else %}Edit {{ cluster.name }}{% endif %} · k8s-cost-agent{% endblock %}
+{% block content %}
+  <h1>{% if mode == 'new' %}Add cluster{% else %}Edit {{ cluster.name }}{% endif %}</h1>
+  <p class="lede">
+    {% if mode == 'new' %}
+    Register a spoke cluster. Apply <code>rbac/cost-agent-readonly.yaml</code>
+    first, then paste the ServiceAccount token below.
+    {% else %}
+    Leave token fields blank to keep the existing secret. Tokens are never
+    shown after they have been saved.
+    {% endif %}
+  </p>
+
+  {% if error %}
+  <div class="banner error">{{ error }}</div>
+  {% endif %}
+
+  <form class="stack" method="post"
+        action="{% if mode == 'new' %}/clusters/new{% else %}/clusters/{{ cluster.id }}/edit{% endif %}">
+    <label for="name">Name</label>
+    <input id="name" name="name" required
+           value="{{ cluster.name if cluster else '' }}"
+           placeholder="prod-us-east">
+
+    <label for="api_server_url">API server URL</label>
+    <input id="api_server_url" name="api_server_url" required
+           value="{{ cluster.api_server_url if cluster else '' }}"
+           placeholder="https://kubernetes.default.svc or https://api.example.com:6443">
+
+    <label for="sa_token">ServiceAccount token</label>
+    <input id="sa_token" name="sa_token" type="password" autocomplete="new-password"
+           {% if mode == 'new' %}required{% endif %}
+           placeholder="{% if mode == 'edit' %}Leave blank to keep existing token{% else %}eyJhbGciOi...{% endif %}">
+    <div class="hint">
+      Write-only. Once saved, this value is never rendered back into any page or API response.
+    </div>
+
+    <label for="ca_cert_pem">CA certificate (PEM, optional)</label>
+    <textarea id="ca_cert_pem" name="ca_cert_pem" rows="8"
+              placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----">{% if cluster and cluster.ca_cert_pem %}{{ cluster.ca_cert_pem }}{% endif %}</textarea>
+    <div class="hint">
+      Not secret — paste the cluster CA so the MCP server can verify TLS.
+      Leave blank to keep the insecure fallback (TLS verification disabled).
+      Clearing this field and saving removes the stored CA.
+    </div>
+
+    <label for="kubecost_url">Kubecost endpoint (optional)</label>
+    <input id="kubecost_url" name="kubecost_url"
+           value="{{ cluster.kubecost_url if cluster and cluster.kubecost_url else '' }}"
+           placeholder="http://kubecost-cost-analyzer.kubecost:9090">
+
+    <label for="kubecost_token">Kubecost token (optional)</label>
+    <input id="kubecost_token" name="kubecost_token" type="password" autocomplete="new-password"
+           placeholder="{% if mode == 'edit' %}Leave blank to keep existing token{% else %}optional{% endif %}">
+    <div class="hint">Also write-only once saved.</div>
+
+    <div class="row-actions">
+      <button type="submit" class="primary">
+        {% if mode == 'new' %}Register cluster{% else %}Save changes{% endif %}
+      </button>
+      <a class="btn" href="/">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

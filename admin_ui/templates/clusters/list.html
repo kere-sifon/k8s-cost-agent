@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Clusters · k8s-cost-agent{% endblock %}
+{% block content %}
+  <h1>Registered clusters</h1>
+  <p class="lede">
+    Hub-and-spoke targets for the MCP cost agent. Add a cluster with its
+    least-privilege ServiceAccount token, then verify RBAC before querying
+    from Claude Desktop.
+  </p>
+
+  {% if error %}
+  <div class="banner error">{{ error }}</div>
+  {% endif %}
+  {% if notice %}
+  <div class="banner notice">{{ notice }}</div>
+  {% endif %}
+
+  {% if clusters %}
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>API server</th>
+        <th>TLS</th>
+        <th>RBAC</th>
+        <th>Last checked</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in clusters %}
+      <tr>
+        <td><strong>{{ c.name }}</strong></td>
+        <td><code>{{ c.api_server_url }}</code></td>
+        <td>
+          {% if c.has_ca_cert %}
+          <span class="status tls_ok">TLS: verified</span>
+          {% else %}
+          <span class="status tls_insecure">TLS: insecure (no CA cert)</span>
+          {% endif %}
+        </td>
+        <td>
+          <span class="status {{ c.rbac_status }}">{{ c.rbac_status | replace('_', ' ') }}</span>
+          {% if c.rbac_detail %}
+          <div class="muted" title="{{ c.rbac_detail }}">{{ c.rbac_detail[:80] }}{% if c.rbac_detail|length > 80 %}…{% endif %}</div>
+          {% endif %}
+        </td>
+        <td class="muted">{{ c.rbac_last_checked or "—" }}</td>
+        <td>
+          <div class="actions">
+            <a class="btn" href="/clusters/{{ c.id }}/edit">Edit</a>
+            <form method="post" action="/clusters/{{ c.id }}/verify">
+              <button type="submit">Verify RBAC</button>
+            </form>
+            <form method="post" action="/clusters/{{ c.id }}/delete"
+                  onsubmit="return confirm('Delete cluster {{ c.name }}? This cannot be undone.');">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    <p>No clusters registered yet.</p>
+    <p><a class="btn primary" href="/clusters/new">Add your first cluster</a></p>
+  </div>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,73 @@
+# Least-privilege, read-only access for the k8s-cost-agent.
+#
+# Apply once per target cluster (hub-and-spoke spoke side):
+#   kubectl apply -f rbac/cost-agent-readonly.yaml
+#
+# Then mint a long-lived token for the ServiceAccount (lab/MVP only —
+# see README "Production Evolution" for the OIDC federation path):
+#   kubectl create token k8s-cost-agent -n k8s-cost-agent --duration=8760h
+#
+# HARD BOUNDARY: get/list/watch only. No create/update/delete/patch/exec.
+# No access to secrets.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8s-cost-agent
+  labels:
+    app.kubernetes.io/name: k8s-cost-agent
+    app.kubernetes.io/component: agent-identity
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-cost-agent
+  namespace: k8s-cost-agent
+  labels:
+    app.kubernetes.io/name: k8s-cost-agent
+    app.kubernetes.io/component: agent-identity
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8s-cost-agent-readonly
+  labels:
+    app.kubernetes.io/name: k8s-cost-agent
+    app.kubernetes.io/component: rbac
+rules:
+  # Core workload / capacity inventory
+  - apiGroups: [""]
+    resources:
+      - pods
+      - nodes
+      - namespaces
+      - resourcequotas
+      - limitranges
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch"]
+
+  # metrics.k8s.io (metrics-server) — live usage for anomaly detection
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - pods
+      - nodes
+    verbs: ["get", "list"]
+  # Intentionally omitted: secrets, configmaps (beyond what is needed),
+  # pods/exec, pods/attach, pods/portforward, create/update/delete/patch
+  # on any resource, and any write verb on any group.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8s-cost-agent-readonly
+  labels:
+    app.kubernetes.io/name: k8s-cost-agent
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k8s-cost-agent-readonly
+subjects:
+  - kind: ServiceAccount
+    name: k8s-cost-agent
+    namespace: k8s-cost-agent

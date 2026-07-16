@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Local SQLite datastore (tokens + CA live here — never commit)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Local cert dumps / kubeconfigs accidentally dropped in the tree
+*.pem
+!rbac/**
+kubeconfig*
+*.kubeconfig
+
+# IDE / OS / tooling
+.idea/
+.vscode/
+.cursor/
+.DS_Store
+*.swp
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/

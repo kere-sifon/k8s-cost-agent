@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}k8s-cost-agent{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #f6f7f4;
+      --ink: #1a1f16;
+      --muted: #5c6654;
+      --line: #d5dbc8;
+      --accent: #2f5d3a;
+      --accent-ink: #f4faf5;
+      --warn: #8a5a12;
+      --err: #8b2e2e;
+      --ok: #1f6b3a;
+      --surface: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse at top left, #e8efe4 0%, transparent 50%),
+        linear-gradient(180deg, #eef1ea 0%, var(--bg) 40%);
+      min-height: 100vh;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      backdrop-filter: blur(6px);
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 1.25rem 1.5rem; }
+    header .wrap { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+    .brand { font-weight: 650; letter-spacing: -0.02em; font-size: 1.15rem; }
+    .brand span { color: var(--muted); font-weight: 450; }
+    nav a { color: var(--accent); text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; letter-spacing: -0.02em; margin: 0 0 0.35rem; }
+    .lede { color: var(--muted); margin: 0 0 1.25rem; max-width: 42rem; }
+    .banner {
+      padding: 0.7rem 0.9rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      background: var(--surface);
+    }
+    .banner.error { border-color: #e2b4b4; color: var(--err); }
+    .banner.notice { border-color: #b9d7c2; color: var(--ok); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.75rem 0.85rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      font-size: 0.92rem;
+    }
+    th { background: #f0f3ec; color: var(--muted); font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+    .status {
+      display: inline-block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+    }
+    .status.verified { color: var(--ok); border-color: #b9d7c2; background: #eef8f1; }
+    .status.not_verified { color: var(--warn); border-color: #e6d2a8; background: #fbf6ea; }
+    .status.error { color: var(--err); border-color: #e2b4b4; background: #fbf0f0; }
+    .status.tls_ok { color: var(--ok); border-color: #b9d7c2; background: #eef8f1; text-transform: none; letter-spacing: 0; }
+    .status.tls_insecure { color: var(--warn); border-color: #e6d2a8; background: #fbf6ea; text-transform: none; letter-spacing: 0; }
+    form.stack textarea {
+      width: 100%;
+      max-width: 36rem;
+      padding: 0.55rem 0.65rem;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 0.82rem;
+      background: var(--surface);
+      resize: vertical;
+    }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .actions form { display: inline; margin: 0; }
+    button, .btn {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      padding: 0.4rem 0.7rem;
+      border-radius: 5px;
+      font: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    button.primary, .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--accent-ink);
+    }
+    button.danger { color: var(--err); border-color: #e2b4b4; }
+    button:hover, .btn:hover { filter: brightness(0.98); }
+    .empty {
+      padding: 2rem 1rem;
+      text-align: center;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.6);
+      color: var(--muted);
+    }
+    form.stack label {
+      display: block;
+      font-weight: 600;
+      font-size: 0.88rem;
+      margin: 0.9rem 0 0.3rem;
+    }
+    form.stack input {
+      width: 100%;
+      max-width: 36rem;
+      padding: 0.55rem 0.65rem;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      font: inherit;
+      background: var(--surface);
+    }
+    form.stack .hint { color: var(--muted); font-size: 0.82rem; margin-top: 0.25rem; }
+    form.stack .row-actions { margin-top: 1.25rem; display: flex; gap: 0.5rem; }
+    footer {
+      margin-top: 2.5rem;
+      padding: 1rem 0 2rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--line);
+    }
+    code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.86em; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="brand">k8s-cost-agent <span>· admin</span></div>
+      <nav>
+        <a href="/">Clusters</a>
+        &nbsp;·&nbsp;
+        <a href="/clusters/new">Add cluster</a>
+      </nav>
+    </div>
+  </header>
+  <main class="wrap">
+    {% block content %}{% endblock %}
+    <footer>
+      Bound to localhost by default. No auth layer at this scope —
+      see README. Querying happens via the MCP server, not this UI.
+      Tokens are write-only and never re-rendered after save.
+    </footer>
+  </main>
+</body>
+</html>
