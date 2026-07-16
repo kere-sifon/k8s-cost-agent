@@ -11,7 +11,7 @@ The agent **never mutates cluster state**; remediation is advisory text only.
 
 Pattern reuse: LangGraph supervisor-worker + AWS Bedrock (Claude Haiku),
 exposed via MCP — same shape as [ci-triage-agent](https://github.com/kere-sifon/Ci-mvp)
-/ [ci-triage-mcp](https://github.com/).
+/ [ci-triage-mcp](https://github.com/kere-sifon/mcp-triage).
 
 ---
 
