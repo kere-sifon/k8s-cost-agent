@@ -51,7 +51,7 @@ Per MCP query (target cluster bound in):
                      → END
 
   Data sources (live): metrics-server / Prometheus + Kubecost API
-  LLM: AWS Bedrock (Claude Haiku) — stubbed as TODO in this scaffold
+  LLM: AWS Bedrock (Claude Haiku) — wired; Kubecost allocation API still TODO
 ```
 
 | Process | Role | Integration |
@@ -75,7 +75,7 @@ do not contend with MCP reads.
 mcp_server/              MCP server (stdio)
   server.py              Four tools
   cluster_resolver.py    SQLite read + RBAC gate + per-request kube client
-  agent/                 LangGraph supervisor + workers (Bedrock/Kubecost TODOs)
+  agent/                 LangGraph supervisor + workers (Bedrock wired; Kubecost TODO)
   README.md              How to run + Claude Desktop config
 admin_ui/                FastAPI + Jinja2 registration UI, SQLite writes
 rbac/                    ClusterRole / RoleBinding YAML (apply per spoke)
@@ -164,9 +164,9 @@ make verify-rbac CLUSTER=prod
 ```
 
 The ClusterRole grants **get/list/watch only** on pods, nodes, namespaces,
-resourcequotas, limitranges, and `metrics.k8s.io`. No secrets access. No
-create/update/delete/exec anywhere. Verification also asserts that write /
-exec / secrets verbs remain **denied**.
+resourcequotas, limitranges, persistentvolumeclaims, and `metrics.k8s.io`. No
+secrets access. No create/update/delete/exec anywhere. Verification also
+asserts that write / exec / secrets verbs remain **denied**.
 
 ### 5. Run the MCP server
 
@@ -195,14 +195,30 @@ Claude Desktop config example:
 }
 ```
 
-### 6. Bedrock / Kubecost (next wiring step)
+### 6. Bedrock (wired) / Kubecost (still TODO)
 
-This scaffold marks Bedrock and Kubecost calls as explicit `TODO`s so the
-graph and MCP tools are runnable offline with deterministic stubs. Wire:
+Bedrock is wired: `mcp_server/agent/bedrock_client.py` makes a real
+`bedrock-runtime` `converse()` call (model configurable via
+`BEDROCK_MODEL_ID`, default Claude Haiku) with structured-JSON parsing and
+a deterministic heuristic fallback if the call fails, so the pipeline still
+returns a usable result if Bedrock is unreachable or credentials aren't
+configured. Requires standard AWS credential resolution (`AWS_PROFILE` /
+`AWS_REGION`, or an execution role) and Bedrock model access enabled for
+the target model in that region.
 
-- `agent/clients/bedrock.py` → `ChatBedrockConverse` (Claude Haiku)
-- `agent/clients/kubecost_client.py` → live allocation API
-- metrics-server reads via `agent/clients/k8s_client.py`
+Kubecost is not yet wired — `mcp_server/agent/kubecost_client.py`'s
+`fetch_allocation()` is a documented `TODO` stub. Cost-based anomaly
+detection is currently unavailable; usage-based detection (via
+metrics-server, read inline in `mcp_server/agent/workers.py`) runs
+independently of Kubecost and is unaffected. To wire it:
+
+- `mcp_server/agent/bedrock_client.py` → already implemented; adjust
+  `BEDROCK_MODEL_ID` / `BEDROCK_MAX_TOKENS` / `BEDROCK_TEMPERATURE` via env
+  vars if a different model or budget is needed.
+- `mcp_server/agent/kubecost_client.py` → implement `fetch_allocation()`
+  against a live Kubecost allocation API endpoint.
+- metrics-server reads already run live via the kubernetes client inside
+  `mcp_server/agent/workers.py` — no separate client file for this.
 
 ---
 
@@ -210,9 +226,10 @@ graph and MCP tools are runnable offline with deterministic stubs. Wire:
 
 | Rule | Enforcement |
 |------|-------------|
-| No write/exec RBAC verbs | `rbac/cost-agent-readonly.yaml` + verify checks forbidden verbs |
+| No write/exec RBAC verbs | `rbac/cost-agent-readonly.yaml` (pods, nodes, namespaces, resourcequotas, limitranges, persistentvolumeclaims, metrics.k8s.io — get/list/watch only) + verify checks forbidden verbs |
 | No cluster mutation from tools | Remediation returned as text only |
 | Tokens never re-rendered | Write-only form fields; secrets columns excluded from templates/MCP list |
+| TLS verified per cluster | Optional `ca_cert_pem` stored per cluster; `cluster_resolver` sets `verify_ssl=True` with that CA when present, otherwise falls back to unverified with an explicit warning logged on every call |
 | Admin UI not publicly exposed | Default bind `127.0.0.1`; no auth (documented tradeoff) |
 | No standing shared k8s client | Fresh `Configuration` per request from resolved cluster row |
 
