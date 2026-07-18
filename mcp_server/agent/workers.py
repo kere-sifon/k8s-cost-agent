@@ -25,6 +25,7 @@ from mcp_server.agent.prompts import (
     EXPLAINER_SYSTEM,
     USAGE_ANALYZER_SYSTEM,
 )
+from mcp_server.cluster_resolver import ClusterUnreachableError
 
 logger = logging.getLogger(__name__)
 
@@ -270,51 +271,63 @@ def build_usage_analyzer_input(state: GraphState) -> dict[str, Any]:
     metrics = _list_pod_metrics_map(state, ns)
 
     pods_out: list[dict[str, Any]] = []
+    cluster = state["cluster_name"]
     try:
         if ns:
             pod_list = core.list_namespaced_pod(ns)
         else:
             pod_list = core.list_pod_for_all_namespaces()
     except ApiException as exc:
-        logger.warning("list pods failed: %s", exc.reason)
-        pod_list = None
+        # Do NOT treat this as an empty cluster — that produces false "no anomalies".
+        raise ClusterUnreachableError(
+            f"Cluster '{cluster}' is registered but unreachable while listing pods: "
+            f"HTTP {exc.status} {exc.reason}. Check API server connectivity and credentials."
+        ) from exc
     except Exception as exc:  # noqa: BLE001
-        logger.warning("list pods error: %s", exc)
-        pod_list = None
+        raise ClusterUnreachableError(
+            f"Cluster '{cluster}' is registered but unreachable while listing pods: {exc}. "
+            "Check API server connectivity and credentials."
+        ) from exc
 
-    if pod_list is not None:
-        for pod in pod_list.items:
-            req_cpu, req_mem = _sum_quantities(pod.spec.containers, "requests")
-            lim_cpu, lim_mem = _sum_quantities(pod.spec.containers, "limits")
-            usage = metrics.get((pod.metadata.namespace, pod.metadata.name), {})
-            pods_out.append(
-                {
-                    "namespace": pod.metadata.namespace,
-                    "pod_name": pod.metadata.name,
-                    "owner": _owner_name(pod),
-                    "requests": {
-                        "cpu": req_cpu or "",
-                        "memory": req_mem or "",
-                    },
-                    "limits": {
-                        "cpu": lim_cpu or "",
-                        "memory": lim_mem or "",
-                    },
-                    "usage": {
-                        "cpu": usage.get("cpu", ""),
-                        "memory": usage.get("memory", ""),
-                    },
-                }
-            )
+    for pod in pod_list.items:
+        req_cpu, req_mem = _sum_quantities(pod.spec.containers, "requests")
+        lim_cpu, lim_mem = _sum_quantities(pod.spec.containers, "limits")
+        usage = metrics.get((pod.metadata.namespace, pod.metadata.name), {})
+        pods_out.append(
+            {
+                "namespace": pod.metadata.namespace,
+                "pod_name": pod.metadata.name,
+                "owner": _owner_name(pod),
+                "requests": {
+                    "cpu": req_cpu or "",
+                    "memory": req_mem or "",
+                },
+                "limits": {
+                    "cpu": lim_cpu or "",
+                    "memory": lim_mem or "",
+                },
+                "usage": {
+                    "cpu": usage.get("cpu", ""),
+                    "memory": usage.get("memory", ""),
+                },
+            }
+        )
+
+    # PVC orphan check is best-effort (RBAC may deny PVCs); never mask a live cluster.
+    try:
+        unattached = _list_unattached_pvcs(state, ns)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("unattached PVC scan skipped: %s", exc)
+        unattached = []
 
     return {
-        "cluster": state["cluster_name"],
+        "cluster": cluster,
         "namespace_filter": ns,
         "snapshot_timestamp": datetime.now(timezone.utc)
         .replace(microsecond=0)
         .isoformat(),
         "pods": pods_out,
-        "unattached_pvcs": _list_unattached_pvcs(state, ns),
+        "unattached_pvcs": unattached,
     }
 
 
@@ -599,7 +612,29 @@ def usage_analyzer(state: GraphState) -> dict[str, Any]:
     INPUT:  see prompts / build_usage_analyzer_input()
     OUTPUT: {"candidates": [{id, namespace, resource, pattern, severity, evidence}, ...]}
     """
-    usage_input = build_usage_analyzer_input(state)
+    try:
+        usage_input = build_usage_analyzer_input(state)
+    except ClusterUnreachableError as exc:
+        logger.error("usage_analyzer | snapshot failed: %s", exc)
+        # Short-circuit the graph: do not invent an empty "no anomalies" result.
+        return {
+            "usage_input": {
+                "cluster": state["cluster_name"],
+                "namespace_filter": state.get("namespace"),
+                "pods": [],
+                "unattached_pvcs": [],
+                "error": str(exc),
+            },
+            "candidates": [],
+            "anomalies": [],
+            "usage_attempted": True,
+            "baseline_attempted": True,
+            "explain_attempted": True,
+            "errors": [str(exc)],
+            "explanation": str(exc),
+            "remediation": "",
+        }
+
     logger.info(
         "usage_analyzer | cluster=%s pods=%d pvcs=%d",
         usage_input["cluster"],

@@ -24,6 +24,18 @@ export AWS_PROFILE=default   # or ambient IAM creds
 export BEDROCK_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0
 ```
 
+4. **Sentry** (optional — omit `SENTRY_DSN` to disable):
+
+```bash
+export SENTRY_DSN=https://<key>@o<org>.ingest.sentry.io/<project>
+export SENTRY_ENVIRONMENT=local
+export SENTRY_TRACES_SAMPLE_RATE=1.0
+```
+
+Uses `MCPIntegration` for tool-level errors/traces. Expected client errors
+(unregistered / unverified cluster) are filtered out via `before_send`.
+`send_default_pii` is off so tool payloads are not shipped.
+
 ## Run
 
 From the repo root (so `mcp_server` is importable):
@@ -47,7 +59,9 @@ export K8S_COST_AGENT_DB_PATH=/absolute/path/to/k8s-cost-agent/data/clusters.db
         "PYTHONPATH": "/absolute/path/to/k8s-cost-agent",
         "K8S_COST_AGENT_DB_PATH": "/absolute/path/to/k8s-cost-agent/data/clusters.db",
         "AWS_REGION": "us-east-1",
-        "AWS_PROFILE": "default"
+        "AWS_PROFILE": "default",
+        "SENTRY_DSN": "https://<key>@o<org>.ingest.sentry.io/<project>",
+        "SENTRY_ENVIRONMENT": "local"
       }
     }
   }

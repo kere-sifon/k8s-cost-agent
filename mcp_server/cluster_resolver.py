@@ -33,6 +33,10 @@ class ClusterNotVerifiedError(ValueError):
     """Raised when rbac_status is not 'verified' — do not query the cluster."""
 
 
+class ClusterUnreachableError(RuntimeError):
+    """Raised when the cluster API cannot be reached (down, network, auth, TLS)."""
+
+
 @dataclass(frozen=True)
 class ClusterPublicInfo:
     """Non-secret cluster metadata for list_registered_clusters."""
@@ -182,9 +186,42 @@ def _build_configuration(
     return configuration, None, False
 
 
+def assert_cluster_reachable(
+    resolved: ResolvedCluster,
+    *,
+    timeout_seconds: float = 10.0,
+) -> None:
+    """
+    Live probe: confirm the API server answers a cheap read.
+
+    Registration in SQLite is not enough — a spoke can be down while still
+    listed. Raises ClusterUnreachableError instead of letting workers treat
+    a failed list as "zero pods / no anomalies".
+    """
+    try:
+        # limit=1 keeps the probe cheap; timeout avoids hanging the MCP tool.
+        resolved.core_v1.list_namespace(limit=1, _request_timeout=timeout_seconds)
+    except Exception as exc:  # noqa: BLE001 — any transport/API failure = unreachable
+        logger.error(
+            "cluster '%s' unreachable at %s: %s",
+            resolved.name,
+            resolved.api_server_url,
+            exc,
+        )
+        raise ClusterUnreachableError(
+            f"Cluster '{resolved.name}' is registered but unreachable at "
+            f"{resolved.api_server_url}: {exc}. "
+            "Check that the API server is up, the network path is open, "
+            "and the ServiceAccount token / CA cert are still valid."
+        ) from exc
+
+
 def resolve_cluster_client(cluster_name: str) -> ResolvedCluster:
     """
     Resolve a registered, RBAC-verified cluster into per-request clients.
+
+    Does not probe live connectivity — call ``assert_cluster_reachable``
+    before running analysis tools.
 
     Raises:
         ClusterNotFoundError: name missing from SQLite.

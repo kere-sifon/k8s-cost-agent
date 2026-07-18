@@ -9,18 +9,23 @@ Never mutates cluster state. Never writes to the shared SQLite datastore.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import time
 from functools import wraps
 from typing import Any, Callable, TypeVar
 
+import sentry_sdk
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from sentry_sdk.integrations.mcp import MCPIntegration
 
 from mcp_server.agent.graph import run_analysis
 from mcp_server.cluster_resolver import (
     ClusterNotFoundError,
     ClusterNotVerifiedError,
+    ClusterUnreachableError,
+    assert_cluster_reachable,
     get_db_path,
     list_registered_clusters as _list_clusters,
     resolve_cluster_client,
@@ -35,6 +40,41 @@ logging.basicConfig(
 logger = logging.getLogger("k8s-cost-mcp")
 
 load_dotenv()
+
+
+def _is_expected_client_error(exc: BaseException) -> bool:
+    """True for registration/RBAC gate errors that should not page Sentry."""
+    seen: BaseException | None = exc
+    visited: set[int] = set()
+    while seen is not None and id(seen) not in visited:
+        visited.add(id(seen))
+        if isinstance(seen, (ClusterNotFoundError, ClusterNotVerifiedError)):
+            return True
+        if isinstance(seen, ValueError):
+            msg = str(seen)
+            if "RBAC verification" in msg or "not registered" in msg:
+                return True
+        seen = seen.__cause__ or seen.__context__
+    return False
+
+
+def _sentry_before_send(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] | None:
+    exc_info = hint.get("exc_info")
+    if exc_info and _is_expected_client_error(exc_info[1]):
+        return None
+    return event
+
+
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN") or None,
+    environment=os.getenv("SENTRY_ENVIRONMENT", "local"),
+    traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0")),
+    integrations=[MCPIntegration()],
+    # Keep False: tool args/results can include cluster/namespace metadata.
+    # Tokens are never returned by tools, but we still avoid shipping payloads.
+    send_default_pii=False,
+    before_send=_sentry_before_send,
+)
 
 mcp = FastMCP(
     "k8s-cost",
@@ -56,6 +96,9 @@ def _log_tool(tool_name: str) -> Callable[[F], F]:
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             cluster = kwargs.get("cluster", "-")
             started = time.perf_counter()
+            sentry_sdk.set_tag("mcp.tool", tool_name)
+            if cluster != "-":
+                sentry_sdk.set_tag("cluster", str(cluster))
             logger.info("tool=%s cluster=%s event=started", tool_name, cluster)
             try:
                 result = fn(*args, **kwargs)
@@ -84,11 +127,29 @@ def _log_tool(tool_name: str) -> Callable[[F], F]:
 
 
 def _require_resolved(cluster: str):
-    """Resolve + RBAC gate; map domain errors to ValueError for MCP clients."""
+    """
+    Resolve + RBAC gate + live reachability probe.
+
+    Map domain errors to ValueError for MCP clients. A registered-but-down
+    cluster must fail loudly — never look like "no anomalies".
+    """
     try:
-        return resolve_cluster_client(cluster)
-    except (ClusterNotFoundError, ClusterNotVerifiedError) as exc:
+        resolved = resolve_cluster_client(cluster)
+        assert_cluster_reachable(resolved)
+        return resolved
+    except (
+        ClusterNotFoundError,
+        ClusterNotVerifiedError,
+        ClusterUnreachableError,
+    ) as exc:
         raise ValueError(str(exc)) from exc
+
+
+def _raise_if_unreachable(result: dict[str, Any]) -> None:
+    """Surface mid-run connectivity failures instead of an empty anomaly list."""
+    for err in result.get("errors") or []:
+        if "unreachable" in str(err).lower():
+            raise ValueError(str(err))
 
 
 @mcp.tool()
@@ -142,6 +203,7 @@ def list_cost_anomalies(
         namespace=namespace,
         time_window=time_window or "24h",
     )
+    _raise_if_unreachable(result)
     anomalies = []
     for a in result.get("anomalies") or []:
         anomalies.append(
@@ -185,6 +247,7 @@ def explain_anomaly(cluster: str, anomaly_id: str) -> dict[str, Any]:
         operation="explain",
         anomaly_id=anomaly_id,
     )
+    _raise_if_unreachable(result)
     return {
         "cluster": resolved.name,
         "anomaly_id": anomaly_id,
@@ -212,6 +275,7 @@ def suggest_remediation(cluster: str, anomaly_id: str) -> dict[str, Any]:
         operation="remediate",
         anomaly_id=anomaly_id,
     )
+    _raise_if_unreachable(result)
     return {
         "cluster": resolved.name,
         "anomaly_id": anomaly_id,
@@ -229,6 +293,13 @@ def main() -> None:
     except Exception as exc:  # noqa: BLE001
         logger.error("Datastore configuration error: %s", exc)
         raise
+    if os.getenv("SENTRY_DSN"):
+        logger.info(
+            "Sentry enabled | environment=%s",
+            os.getenv("SENTRY_ENVIRONMENT", "local"),
+        )
+    else:
+        logger.info("Sentry disabled (SENTRY_DSN unset)")
     mcp.run(transport="stdio")
 
 
