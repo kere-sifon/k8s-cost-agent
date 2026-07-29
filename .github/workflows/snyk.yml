@@ -32,7 +32,7 @@ jobs:
           args: --severity-threshold=high --sarif-file-output=snyk-open-source.sarif
 
       - name: Upload Open Source SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         continue-on-error: true
         with:
@@ -58,7 +58,7 @@ jobs:
         run: snyk code test --severity-threshold=high --sarif-file-output=snyk-code.sarif
 
       - name: Upload Code SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         continue-on-error: true
         with:
@@ -84,7 +84,7 @@ jobs:
         run: snyk iac test rbac/ --severity-threshold=high --sarif-file-output=snyk-iac.sarif
 
       - name: Upload IaC SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         continue-on-error: true
         with:

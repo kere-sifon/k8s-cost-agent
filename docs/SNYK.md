@@ -39,6 +39,25 @@ export SNYK_TOKEN=...   # from https://app.snyk.io/account
 
 For GitHub Actions, add the same value as a repo secret named `SNYK_TOKEN`.
 
+### Enable Snyk Code (required for `snyk code test`)
+
+Snyk Code is **off by default**. Until you turn it on, CI fails with `SNYK-CODE-0005` / 403:
+
+1. Open [app.snyk.io](https://app.snyk.io) and select your **Organization** (Org Admin role).
+2. Go to **Settings → Snyk Code**.
+3. Set **Enable Snyk Code** to **Enabled** → **Save changes**.
+4. Re-run the workflow (or `make snyk-code`).
+
+CLI/GitHub Actions do **not** need a GitHub integration for `snyk code test`; that integration is only for UI-imported repos. Enabling the product in Settings is enough.
+
+If the error shows an empty org name (`organization: ```), also confirm the token belongs to an org:
+
+```bash
+snyk config get org          # may be empty
+snyk orgs                   # list orgs for this token
+snyk config set org=<ORG_ID>
+```
+
 ---
 
 ## 2. Local workflow (Makefile)
