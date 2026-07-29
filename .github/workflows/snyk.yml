@@ -1,0 +1,92 @@
+# Learn Snyk on this repo: open-source deps + SAST + Kubernetes IaC.
+# Requires repo secret SNYK_TOKEN (https://app.snyk.io/account).
+#
+# continue-on-error is intentional while learning — remove it when you want
+# Snyk findings to fail the PR check.
+
+name: Snyk
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  snyk-open-source:
+    name: Open Source (requirements.txt)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Snyk to check for dependency vulnerabilities
+        uses: snyk/actions/python@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --sarif-file-output=snyk-open-source.sarif
+
+      - name: Upload Open Source SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: snyk-open-source.sarif
+          category: snyk-open-source
+
+  snyk-code:
+    name: Code (SAST)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Snyk CLI
+        uses: snyk/actions/setup@master
+
+      - name: Run Snyk Code
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: snyk code test --severity-threshold=high --sarif-file-output=snyk-code.sarif
+
+      - name: Upload Code SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: snyk-code.sarif
+          category: snyk-code
+
+  snyk-iac:
+    name: IaC (rbac YAML)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Snyk CLI
+        uses: snyk/actions/setup@master
+
+      - name: Run Snyk IaC on rbac/
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: snyk iac test rbac/ --severity-threshold=high --sarif-file-output=snyk-iac.sarif
+
+      - name: Upload IaC SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: snyk-iac.sarif
+          category: snyk-iac

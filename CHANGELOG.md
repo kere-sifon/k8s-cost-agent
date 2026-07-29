@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] — 2026-07-28
+
+### Added
+
+- Snyk learning workflow: `docs/SNYK.md`, Makefile targets (`snyk-test` /
+  `snyk-code` / `snyk-iac`), and `.github/workflows/snyk.yml` for CI.
+
 ## [0.2.0] — 2026-07-16
 
 ### Added

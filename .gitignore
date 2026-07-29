@@ -35,3 +35,9 @@ kubeconfig*
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+
+# Snyk local scan artifacts
+*.sarif
+snyk-*.json
+snyk.json
+.dccache

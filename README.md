@@ -234,6 +234,11 @@ independently of Kubecost and is unaffected. To wire it:
 | Admin UI not publicly exposed | Default bind `127.0.0.1`; no auth (documented tradeoff) |
 | No standing shared k8s client | Fresh `Configuration` per request from resolved cluster row |
 
+### Snyk (learning)
+
+Dependency, SAST, and Kubernetes IaC scans are wired for local + CI use.
+See **[docs/SNYK.md](./docs/SNYK.md)** — start with `make snyk-auth` then `make snyk`.
+
 ---
 
 ## Production Evolution

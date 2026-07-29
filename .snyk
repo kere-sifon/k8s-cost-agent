@@ -1,0 +1,12 @@
+# Snyk policy file — ignore / patch rules go here as you learn.
+# Docs: https://docs.snyk.io/manage-risk/policies/the-snyk-file
+#
+# Example (do not enable blindly):
+# ignore:
+#   'SNYK-PYTHON-EXAMPLE-123':
+#     - '*':
+#         reason: False positive for our usage
+#         expires: '2026-12-31'
+version: v1.0.0
+ignore: {}
+patch: {}
